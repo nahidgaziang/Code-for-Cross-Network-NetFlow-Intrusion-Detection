@@ -1,0 +1,9 @@
+# data and results are not versioned (public releases are downloaded; results are archived separately)
+data/
+results/
+*.npz
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/

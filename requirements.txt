@@ -1,0 +1,10 @@
+# Versions used for the reported results (Python 3.12.10).
+# Install PyTorch first from the CUDA index, e.g.:
+#   pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cu126
+numpy==2.5.4
+pandas==3.1.0
+scipy==1.18.1
+scikit-learn==1.9.1
+xgboost==3.4.1
+matplotlib==3.11.2
+pytest
