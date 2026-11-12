@@ -1,5 +1,7 @@
 # crossnet: cross-network evaluation of NetFlow intrusion detectors
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24172401.svg)](https://doi.org/10.5281/zenodo.24172401)
+
 Code to reproduce the experiments of the paper *Cross-Network NetFlow Intrusion Detection: A Controlled
 Benchmark of Transfer, Adaptation and Target Reference Windows* (venue and DOI to be added on
 publication) by
@@ -133,6 +135,31 @@ tables to `paper/generated/tables/`; set `NF_RESULTS_DIR` to read results from a
   same configuration and seed.
 - `python tests/verify_benchmark.py`: after a full run, checks completeness and recomputes every
   reported metric from the saved scores.
+
+## Citation
+
+If you use this code, please cite the archived release:
+
+> Gazi, N., Prappo, T. H., & Hossain, A. K. M. F. (2026). *Code for "Cross-Network NetFlow Intrusion
+> Detection: A Controlled Benchmark of Transfer, Adaptation and Target Reference Windows"* (Version
+> v1.0.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.24172401
+
+```bibtex
+@software{gazi2026crossnet,
+  author    = {Gazi, Nahid and Prappo, Tanzim Hasan and Hossain, A. K. M. Fakhrul},
+  title     = {Code for "Cross-Network NetFlow Intrusion Detection: A Controlled Benchmark of
+               Transfer, Adaptation and Target Reference Windows"},
+  version   = {v1.0.0},
+  year      = {2026},
+  publisher = {Zenodo},
+  doi       = {10.5281/zenodo.24172401},
+  url       = {https://doi.org/10.5281/zenodo.24172401}
+}
+```
+
+The DOI above identifies version v1.0.0. The concept DOI
+[10.5281/zenodo.24172400](https://doi.org/10.5281/zenodo.24172400) always resolves to the latest
+version. The paper's citation will be added on publication.
 
 ## Results archive
 
