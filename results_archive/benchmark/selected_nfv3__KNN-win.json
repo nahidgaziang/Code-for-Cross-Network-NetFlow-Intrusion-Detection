@@ -1,0 +1,14 @@
+{
+ "NF-CSE-CIC-IDS2018-v3": {
+  "k": 20
+ },
+ "NF-BoT-IoT-v3": {
+  "k": 20
+ },
+ "NF-ToN-IoT-v3": {
+  "k": 20
+ },
+ "NF-UNSW-NB15-v3": {
+  "k": 20
+ }
+}

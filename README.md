@@ -1,6 +1,6 @@
 # crossnet: cross-network evaluation of NetFlow intrusion detectors
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24172401.svg)](https://doi.org/10.5281/zenodo.24172401)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24172400.svg)](https://doi.org/10.5281/zenodo.24172400)
 
 Code to reproduce the experiments of the paper *Cross-Network NetFlow Intrusion Detection: A Controlled
 Benchmark of Transfer, Adaptation and Target Reference Windows* (venue and DOI to be added on
@@ -26,8 +26,9 @@ detection. It covers:
   | S3 | a few labelled target flows | XGB-T, XGB-ST (label-budget study) |
 
 - **Fair comparison.** Every method is tuned with the same budget by leave-one-source-out validation on
-  the source testbeds only, then evaluated on ten seeds. All scores are saved, so every reported number
-  can be recomputed offline.
+  the source testbeds only, then evaluated on ten seeds. All scores are saved, and the run-level results
+  of every reported run are included (`results_archive/`), so every number, table and figure of the paper
+  can be recomputed without training.
 
 ## Repository layout
 
@@ -35,11 +36,12 @@ detection. It covers:
 |---|---|
 | `crossnet/` | Fold construction (`data.py`), feature transforms, training engine, method registry and losses, decision rules, metrics, and the resumable benchmark runner |
 | `scripts/` | Dataset download and pool construction |
-| `experiments/` | Follow-up studies: window size, contamination and timing; identifier-free features; label budget; within- vs cross-network training; pairwise transfer; feature-group ablation; window poisoning |
-| `analysis/` | Main tables and hypothesis tests, failure decomposition, decision-layer analysis, window threshold rules, duplicate check |
+| `experiments/` | Follow-up studies: window size, contamination and timing; identifier-free features; label budget; within- vs cross-network training; pairwise transfer; feature-group ablation; window poisoning; windows collected without labels (`unselected_window.py`); one-class, window-as-labelled-data, near-duplicate and poisoning-vs-k controls (`controls.py`) |
+| `analysis/` | Main tables and hypothesis tests, failure decomposition, decision-layer analysis, prior-controlled split of the decision loss, low-false-alarm range and fusion, window threshold rules, duplicate check |
 | `paper/` | Scripts that recompute every number, table and figure of the paper from the run-level results |
+| `results_archive/` | Run-level results of all reported runs (one row per method, target and seed, about 5.6 MB) and the statistics of the sampling pools |
 | `tests/` | Fold leakage tests, determinism test, and integrity check of a completed benchmark |
-| `docs/` | Protocol details ([PROTOCOL.md](docs/PROTOCOL.md)) and per-experiment instructions ([EXPERIMENTS.md](docs/EXPERIMENTS.md)) |
+| `docs/` | Protocol details ([PROTOCOL.md](docs/PROTOCOL.md)), per-experiment instructions ([EXPERIMENTS.md](docs/EXPERIMENTS.md)) and the dated declarations of all hypotheses ([ANALYSIS_PLAN.md](docs/ANALYSIS_PLAN.md)) |
 
 ## Requirements
 
@@ -117,7 +119,9 @@ python experiments/feature_groups.py
 python experiments/window_poisoning.py run && python experiments/window_poisoning.py report
 ```
 
-**4. Numbers, tables and figures of the paper.** These read only the result files above (no training).
+**4. Numbers, tables and figures of the paper.** These read only run-level result files (no training
+and no dataset download). By default they read the archived results of the reported runs in
+`results_archive/`, so they can be run directly after cloning:
 
 ```bash
 python paper/build_ledger.py     # every reported number -> paper/results_ledger.csv, paper/generated/
@@ -125,7 +129,9 @@ python paper/make_figures.py     # Figures 2-7 -> paper/figures/
 ```
 
 `build_ledger.py` writes one LaTeX macro per value to `paper/generated/results.tex` and the paper's
-tables to `paper/generated/tables/`; set `NF_RESULTS_DIR` to read results from another location.
+tables to `paper/generated/tables/`. To check your own runs instead, set `NF_RESULTS_DIR=results` (and
+`NF_POOL_DIR=data/pools`). Run on the archive, the scripts reproduce the paper's 1,023 reported values
+and all seven tables exactly.
 
 ## Determinism and checks
 
@@ -142,29 +148,32 @@ If you use this code, please cite the archived release:
 
 > Gazi, N., Prappo, T. H., & Hossain, A. K. M. F. (2026). *Code for "Cross-Network NetFlow Intrusion
 > Detection: A Controlled Benchmark of Transfer, Adaptation and Target Reference Windows"* (Version
-> v1.0.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.24172401
+> v1.1.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.24172400
 
 ```bibtex
 @software{gazi2026crossnet,
   author    = {Gazi, Nahid and Prappo, Tanzim Hasan and Hossain, A. K. M. Fakhrul},
   title     = {Code for "Cross-Network NetFlow Intrusion Detection: A Controlled Benchmark of
                Transfer, Adaptation and Target Reference Windows"},
-  version   = {v1.0.0},
+  version   = {v1.1.0},
   year      = {2026},
   publisher = {Zenodo},
-  doi       = {10.5281/zenodo.24172401},
-  url       = {https://doi.org/10.5281/zenodo.24172401}
+  doi       = {10.5281/zenodo.24172400},
+  url       = {https://doi.org/10.5281/zenodo.24172400}
 }
 ```
 
-The DOI above identifies version v1.0.0. The concept DOI
-[10.5281/zenodo.24172400](https://doi.org/10.5281/zenodo.24172400) always resolves to the latest
-version. The paper's citation will be added on publication.
+The concept DOI above always resolves to the latest version. Version v1.0.0 (code only) is
+[10.5281/zenodo.24172401](https://doi.org/10.5281/zenodo.24172401). The paper's citation will be added
+on publication.
 
 ## Results archive
 
-The saved scores and result tables of the reported runs will be deposited in a public archive. The
-link will be added here.
+`results_archive/` holds the run-level results of every run reported in the paper, in the layout the
+scripts write: `benchmark/` (one file per release and method, the failure decomposition, the selected
+KNN-win configurations and the analyses of saved scores), one folder per follow-up study, and `pools/`
+(class counts and feature statistics of the sampling pools). The per-flow scores themselves are not
+included; they can be regenerated with the benchmark code.
 
 ## License
 

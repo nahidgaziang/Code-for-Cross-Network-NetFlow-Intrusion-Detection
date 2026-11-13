@@ -1,4 +1,4 @@
-# data and results are not versioned (public releases are downloaded; results are archived separately)
+# downloaded data and new run outputs are not versioned; the reported run-level results are in results_archive/
 data/
 results/
 *.npz

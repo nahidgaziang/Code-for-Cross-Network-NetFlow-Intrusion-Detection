@@ -19,6 +19,10 @@ the benchmark has finished.
 | E9 | How small and how contaminated can the window be? | `experiments/window_studies.py e9` | `results/e9/` | 0.8 h |
 | P | Can an attacker poison the window? | `experiments/window_poisoning.py run` | `results/poisoning/` | ≈ 2 h |
 | T | Threshold rules for the window detectors | `analysis/window_thresholds.py` | `results/benchmark/analysis/s2_decisions*` | minutes |
+| U | Does the window work when collected without label selection? | `experiments/unselected_window.py run` | `results/unselected/` | ≈ 0.5 h |
+| D-P | How much of the irrecoverable loss is a prior effect? | `analysis/prior_controlled.py` | `results/benchmark/analysis/prior_controlled*` | minutes |
+| C | Controls: one-class detectors on source benign flows, XGBoost with the window labelled benign, near-duplicates of window flows, poisoning vs. number of neighbours | `experiments/controls.py all` (or `oneclass`, `xgbwin`, `neardup`, `poisonk`) | `results/controls/` | not timed in full |
+| L | Low-false-alarm range of all methods; rank-average fusion of KNN-win with source models | `analysis/low_fpr_and_fusion.py` | `results/benchmark/analysis/low_fpr.csv`, `fusion.csv` | minutes |
 
 ## E1 Benchmark
 

@@ -5,7 +5,7 @@ LaTeX macro per value in paper/generated/results.tex. The paper's tables are wri
 paper/generated/tables/. Seed-bootstrap intervals use a fixed generator seed, so the output is
 deterministic.
   python paper/build_ledger.py
-Environment: NF_RESULTS_DIR (default: results/), NF_POOL_DIR (default: data/pools/).
+Environment: NF_RESULTS_DIR (default: results_archive/), NF_POOL_DIR (default: results_archive/pools/).
 """
 import json
 import os
@@ -18,9 +18,9 @@ from scipy.stats import spearmanr, wilcoxon
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, ".."))
-R = os.environ.get("NF_RESULTS_DIR", os.path.join(ROOT, "results"))
+R = os.environ.get("NF_RESULTS_DIR", os.path.join(ROOT, "results_archive"))
 B = os.path.join(R, "benchmark")
-POOLS = os.environ.get("NF_POOL_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "pools"))
+POOLS = os.environ.get("NF_POOL_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "results_archive", "pools"))
 OUT = HERE
 GEN = os.path.join(OUT, "generated")
 os.makedirs(os.path.join(GEN, "tables"), exist_ok=True)
@@ -173,6 +173,34 @@ for fam in FAMS:
         k = E1[(fam, "KNN-win")][E1[(fam, "KNN-win")].target == t].AUROC.mean()
         wins += all(k > E1[(fam, m)][E1[(fam, m)].target == t].AUROC.mean() for m in S01)
 put("NTargetsKnnBeatsAllSZeroSOne", wins, 0, "int", "E1 per-target means")
+cap_both = 0
+for t in TGT:
+    ok = []
+    for fam in FAMS:
+        tt = f"{t}-{'v2' if fam == 'nfv2' else 'v3'}"
+        k = E1[(fam, "KNN-win")][E1[(fam, "KNN-win")].target == tt].AUROC.mean()
+        ok.append(all(k > E1[(fam, m)][E1[(fam, m)].target == tt].AUROC.mean() for m in S01))
+    cap_both += all(ok)
+put("NCapturesKnnBeatsAllBoth", cap_both, 0, "int", "E1", "captures where KNN-win beats every S0/S1 method in both releases")
+
+# network-level evidence: per-target gains of KNN-win over the best S0/S1 method of each release,
+# leave-one-target-out means, and a sign test over the 8 targets (the unit is the network, not the seed)
+from scipy.stats import binomtest  # noqa: E402
+pos, gains_all = 0, []
+for fam, F in FAMS.items():
+    best = max(S01, key=lambda m: E1[(fam, m)].AUROC.mean())
+    x = E1[(fam, "KNN-win")].merge(E1[(fam, best)], on=["target", "seed"])
+    per_t = (100 * (x.AUROC_x - x.AUROC_y)).groupby(x.target).mean()
+    gains_all += list(per_t.values)
+    pos += int((per_t > 0).sum())
+    put(f"TgtGainMin{F}", per_t.min(), 1, "pp", "E1", f"KNN-win - {best}, per target")
+    put(f"TgtGainMax{F}", per_t.max(), 1, "pp", "E1", f"KNN-win - {best}, per target")
+    loo = [per_t.drop(t).mean() for t in per_t.index]
+    put(f"LooGainMin{F}", min(loo), 1, "pp", "E1", "mean gain with one target left out")
+    put(f"LooGainMax{F}", max(loo), 1, "pp", "E1", "mean gain with one target left out")
+put("NTargetsPosGain", pos, 0, "int", "E1", "of 8 targets, vs the release's best S0/S1 method")
+put("SignTestP", binomtest(wins, 8, 0.5, alternative="greater").pvalue, 1, "pvalue", "one-sided sign test over 8 targets",
+    "KNN-win beats every S0/S1 method")
 
 # H-B1: no S0/S1 method gains >= 5 pp mean AUROC over ERM-CB in both releases
 gain_cb = {}
@@ -248,6 +276,20 @@ for fam, F in FAMS.items():
     put(f"DlRecPrior{F}", 100 * (d.em_oracle_prior - d.em).mean() / loss, 1, "percent", "decision_layer.csv")
     put(f"DlRankLimited{F}", 100 * (d.src_val_macro_f1 - d.oracle_threshold).mean(), 1, "pp", "decision_layer.csv")
     put(f"DlBbseMinusEm{F}", 100 * (d.bbse - d.em).mean(), 1, "pp", "decision_layer.csv")
+# prior-controlled split of the threshold-irrecoverable loss (prior_controlled_decomposition.py)
+pc = pd.read_csv(os.path.join(B, "analysis", "prior_controlled.csv"))
+assert len(pc) == len(dl)
+for fam, F in FAMS.items():
+    g = pc[pc.family == fam]
+    put(f"PcLoss{F}", 100 * (g.F_S - g.F_T_best).mean(), 1, "pp", "prior_controlled.csv")
+    put(f"PcPrior{F}", 100 * (g.F_S_best - g.F_S_prior).mean(), 1, "pp", "prior_controlled.csv")
+    put(f"PcRank{F}", 100 * (g.F_S_prior - g.F_T_best).mean(), 1, "pp", "prior_controlled.csv")
+    put(f"PcRankShare{F}", 100 * (g.F_S_prior - g.F_T_best).mean() / (g.F_S - g.F_T_best).mean(), 0, "percent", "prior_controlled.csv")
+    b = g[g.target.str.startswith("NF-BoT")]
+    put(f"PcPriorBot{F}", 100 * (b.F_S_best - b.F_S_prior).mean(), 1, "pp", "prior_controlled.csv")
+    put(f"PcRankBot{F}", 100 * (b.F_S_prior - b.F_T_best).mean(), 1, "pp", "prior_controlled.csv")
+    put(f"PcAucSrc{F}", g.AUROC_src.mean(), 3, "plain", "prior_controlled.csv")
+    put(f"PcAucTgt{F}", g.AUROC_tgt.mean(), 3, "plain", "prior_controlled.csv")
 put("DlNRuns", len(dl), 0, "int", "decision_layer.csv")
 put("DlNMethods", dl.method.nunique(), 0, "int", "decision_layer.csv")
 
@@ -293,24 +335,31 @@ for fam, F in FAMS.items():
 def table_operating():
     """Operating points of the window detectors, per target (mean over 10 seeds)."""
     names = {"Bot": "BoT-IoT", "Cse": "CIC-IDS2018", "Ton": "ToN-IoT", "Unsw": "UNSW-NB15"}
-    L = [r"\begin{tabular}{@{}llrrrrrrr@{}}", r"\toprule",
-         r" & & & \multicolumn{3}{c}{MAD rule ($Z=3$)} & \multicolumn{2}{c}{99th-percentile rule} & TPR at \\",
-         r"\cmidrule(lr){4-6}\cmidrule(lr){7-8}",
-         r"Release & Target & AUROC & FPR & TPR & F1 & FPR & TPR & 1\% FPR \\", r"\midrule"]
+    L = [r"\begin{tabular}{@{}llrrrrrrrr@{}}", r"\toprule",
+         r" & & & & \multicolumn{3}{c}{MAD rule ($Z=3$)} & \multicolumn{2}{c}{99th-pct.\ rule} & TPR at \\",
+         r"\cmidrule(lr){5-7}\cmidrule(lr){8-9}",
+         r"Release & Target & AUROC & PR-AUC & FPR & TPR & Prec. & FPR & TPR & 1\% FPR \\", r"\midrule"]
+    prior = dl.groupby(["target", "seed"]).prior_true.first()
     for fam, F in FAMS.items():
         full = pd.read_csv(os.path.join(B, f"eval_{fam}__KNN-win.csv"))
         rel = "NF-v2" if fam == "nfv2" else "NF-v3"
         rows = []
         for t, g in sorted(full.groupby("target"), key=lambda kv: names[tname(kv[0])]):
             md, q = g[g.rule == "win_mad"], g[g.rule == "win_fpr"]
-            rows.append([names[tname(t)], md.AUROC.mean(), 100 * md.FPR_op.mean(), 100 * md.TPR_op.mean(), md.MacroF1.mean(),
-                         100 * q.FPR_op.mean(), 100 * q.TPR_op.mean(), 100 * md["TPR_at_FPR0.01"].mean()])
+            pi = np.array([prior.loc[(t, sd)] for sd in md.seed])
+            prec = md.TPR_op.values * pi / np.maximum(md.TPR_op.values * pi + md.FPR_op.values * (1 - pi), 1e-12)
+            rows.append([names[tname(t)], md.AUROC.mean(), md.PRAUC.mean(), 100 * md.FPR_op.mean(), 100 * md.TPR_op.mean(),
+                         100 * prec.mean(), 100 * q.FPR_op.mean(), 100 * q.TPR_op.mean(), 100 * md["TPR_at_FPR0.01"].mean()])
+        put(f"Op{F}KnnWinMadPrecMin", min(r[5] for r in rows), 1, "percent", f"eval_{fam}__KNN-win.csv", "per-target minimum")
+        put(f"Op{F}KnnWinMadPrecMax", max(r[5] for r in rows), 1, "percent", f"eval_{fam}__KNN-win.csv", "per-target maximum")
+        put(f"Op{F}KnnWinPrAucMin", min(r[2] for r in rows), 3, "plain", f"eval_{fam}__KNN-win.csv", "per-target minimum")
+        put(f"Op{F}KnnWinPrAucMax", max(r[2] for r in rows), 3, "plain", f"eval_{fam}__KNN-win.csv", "per-target maximum")
         rows.append(["Mean"] + list(np.mean([r[1:] for r in rows], axis=0)))
         for i, r in enumerate(rows):
             lead = rel if i == 0 else ""
             if r[0] == "Mean":
-                L.append(r"\cmidrule(l){2-9}")
-            L.append(f"{lead} & {r[0]} & {r[1]:.3f} & {r[2]:.1f} & {r[3]:.1f} & {r[4]:.3f} & {r[5]:.1f} & {r[6]:.1f} & {r[7]:.1f}" + r" \\")
+                L.append(r"\cmidrule(l){2-10}")
+            L.append(f"{lead} & {r[0]} & {r[1]:.3f} & {r[2]:.3f} & {r[3]:.1f} & {r[4]:.1f} & {r[5]:.1f} & {r[6]:.1f} & {r[7]:.1f} & {r[8]:.1f}" + r" \\")
         L.append(r"\midrule" if fam == "nfv2" else r"\bottomrule")
     L.append(r"\end{tabular}")
     open(os.path.join(GEN, "tables", "tab_operating.tex"), "w", encoding="utf-8").write("\n".join(L) + "\n")
@@ -454,6 +503,23 @@ for m in ("XGB", "RF", "ERM-CB"):
         put(f"Audit{mname(m)}{Cn}", spearmanr(x.Loss_AUROC, x[col]).correlation, 2, "plain", "e6_transfer_losses.csv")
 rhos = [spearmanr(tl[tl.method == m].Loss_AUROC, tl[tl.method == m][c]).correlation
         for m in ("XGB", "RF", "ERM-CB") for c in ("Mean_PSI", "Mean_Wasserstein", "Mean_Abs_Z_Diff")]
+rng_a = np.random.default_rng(BOOT_SEED)
+n_excl, ci_lo, ci_hi = 0, [], []
+for m in ("XGB", "RF", "ERM-CB"):
+    x = tl[tl.method == m].reset_index(drop=True)
+    for c in ("Mean_PSI", "Mean_Wasserstein", "Mean_Abs_Z_Diff"):
+        bs = []
+        for _ in range(2000):
+            idx = rng_a.integers(0, len(x), len(x))
+            r_ = spearmanr(x.Loss_AUROC.values[idx], x[c].values[idx]).correlation
+            if np.isfinite(r_):
+                bs.append(r_)
+        lo_, hi_ = np.percentile(bs, [2.5, 97.5])
+        ci_lo.append(lo_); ci_hi.append(hi_)
+        n_excl += int(lo_ > 0 or hi_ < 0)
+put("AuditNCiExcludeZero", n_excl, 0, "int", "e6_transfer_losses.csv", "of 9 correlations; bootstrap over pairs")
+put("AuditCiLoMin", min(ci_lo), 2, "plain", "bootstrap over pairs")
+put("AuditCiHiMax", max(ci_hi), 2, "plain", "bootstrap over pairs")
 put("AuditRhoMin", min(rhos), 2, "plain", "e6_transfer_losses.csv", "3 models x 3 divergences")
 put("AuditRhoMax", max(rhos), 2, "plain", "e6_transfer_losses.csv", "3 models x 3 divergences")
 pr = pd.read_csv(os.path.join(R, "e6", "e6_pairwise_runs.csv"))
@@ -529,6 +595,238 @@ for fam, F in FAMS.items():
         n0 = g[(g.p_poison == 0.10)]
         put(f"Po{F}{M}FprNaiveTen", 100 * n0[n0.defense == "naive"].FPR_benign_z3.mean(), 1, "percent", "poisoning_runs.csv")
         put(f"Po{F}{M}FprTrimTen", 100 * n0[n0.defense == "trimmed"].FPR_benign_z3.mean(), 1, "percent", "poisoning_runs.csv")
+
+# ---------------------------------------------------------------- U: windows collected without label selection
+U_PATH = os.path.join(R, "unselected", "u_runs.csv")
+u = pd.read_csv(U_PATH) if os.path.exists(U_PATH) else pd.DataFrame()
+ukey = ["family", "target", "seed", "window", "method", "defense"]
+U_DONE = len(u) == 2 * 4 * 10 * 2 * 2 + 4 * 10 * 2 * 2 and not u.duplicated(ukey).any()
+if not U_DONE:
+    print(f"note: experiment U incomplete ({len(u)} of 480 rows); its values are skipped")
+    u = pd.DataFrame(columns=ukey + ["win_attack_share", "AUROC"])
+if U_DONE:
+    uk = u[(u.method == "KNN-win") & (u.window == "rand")]
+    n_beat, rows_u = 0, []
+    names_u = {"Bot": "BoT-IoT", "Cse": "CIC-IDS2018", "Ton": "ToN-IoT", "Unsw": "UNSW-NB15"}
+    for fam, F in FAMS.items():
+        best = max(S01, key=lambda m: E1[(fam, m)].AUROC.mean())
+        for t in sorted(uk[uk.family == fam].target.unique()):
+            T = tname(t)
+            g = uk[(uk.family == fam) & (uk.target == t)]
+            nv, tr = g[g.defense == "naive"], g[g.defense == "trimmed"]
+            src = E1[(fam, best)][E1[(fam, best)].target == t].AUROC.mean()
+            sel = E1[(fam, "KNN-win")][E1[(fam, "KNN-win")].target == t].AUROC.mean()
+            put(f"U{F}{T}Share", 100 * nv.win_attack_share.mean(), 1, "percent", "u_runs.csv")
+            put(f"U{F}{T}Auc", nv.AUROC.mean(), 3, "plain", "u_runs.csv")
+            put(f"U{F}{T}AucTrim", tr.AUROC.mean(), 3, "plain", "u_runs.csv")
+            put(f"U{F}{T}BestSrc", src, 3, "plain", "E1", f"{best} on this target")
+            n_beat += nv.AUROC.mean() > src
+            rows_u.append((F, T, 100 * nv.win_attack_share.mean(), sel, nv.AUROC.mean(), tr.AUROC.mean(), src))
+        h = uk[(uk.family == fam) & (uk.defense == "naive") & uk.target.str.contains("UNSW|CSE")]
+        put(f"UBenignMajAuc{F}", h.AUROC.mean(), 3, "plain", "u_runs.csv", "UNSW-NB15 and CSE-CIC-IDS2018")
+    put("UNTargetsBeatBest", n_beat, 0, "int", "u_runs.csv", "of 8 targets, unselected window vs release-best S0/S1")
+    hu1 = all(r[4] > r[6] for r in rows_u if r[1] in ("Unsw", "Cse"))
+    put("HUOneHolds", int(hu1), 0, "int", "H-U1: 1 = holds")
+    # U-early (NF-v3): unselected window from the first 20% of the timeline, late flows
+    ue = u[(u.window == "early") & (u.method == "KNN-win") & (u.defense == "naive")]
+    for t in sorted(ue.target.unique()):
+        g = ue[ue.target == t]
+        put(f"UEarly{tname(t)}Share", 100 * g.win_attack_share.mean(), 1, "percent", "u_runs.csv")
+        put(f"UEarly{tname(t)}Auc", g.AUROC.mean(), 3, "plain", "u_runs.csv")
+    cc = c5[(c5.cut == 0.2) & c5.target.isin(prim)]
+    best_late = cc.groupby("method").AUROC.mean().idxmax()
+    x = ue[ue.target.isin(prim)][["target", "seed", "AUROC"]].merge(cc[cc.method == best_late], on=["target", "seed"])
+    assert len(x) == 30
+    put("UEarlyPrim", x.AUROC_x.mean(), 3, "plain", "u_runs.csv", "3 interpretable NF-v3 targets")
+    put("UEarlyGain", 100 * (x.AUROC_x - x.AUROC_y).mean(), 1, "pp", "u_runs.csv", f"vs {best_late} on late flows")
+    put("UEarlyP", wil(x.AUROC_x - x.AUROC_y), 1, "pvalue", "Wilcoxon, n=30")
+
+
+    def table_unselected():
+        L = [r"\begin{tabular}{@{}llrrrrr@{}}", r"\toprule",
+             r" & & Window & \multicolumn{3}{c}{KNN-win AUROC} & Best \\", r"\cmidrule(lr){4-6}",
+             r"Release & Target & attacks (\%) & selected & unselected & trimmed & S0/S1 \\", r"\midrule"]
+        for i, (F, T, sh, sel, un, tr, src) in enumerate(rows_u):
+            lead = ("NF-v2" if F == "Vtwo" else "NF-v3") if i % 4 == 0 else ""
+            cell = (lambda v: rf"\textbf{{{v:.3f}}}" if v > src else f"{v:.3f}")
+            L.append(f"{lead} & {names_u[T]} & {sh:.1f} & {sel:.3f} & {cell(un)} & {cell(tr)} & {src:.3f}" + r" \\")
+            if i == 3:
+                L.append(r"\midrule")
+        L += [r"\bottomrule", r"\end{tabular}"]
+        open(os.path.join(GEN, "tables", "tab_unselected.tex"), "w", encoding="utf-8").write("\n".join(L) + "\n")
+
+
+    table_unselected()
+
+# ---------------------------------------------------------------- second review: analyses of saved scores (post hoc)
+lf = pd.read_csv(os.path.join(B, "analysis", "low_fpr.csv"))
+assert len(lf) == 2 * 18 * 40
+for fam, F in FAMS.items():
+    g = lf[lf.family == fam].groupby("method")[["pAUC01", "TPR_at_FPR0.01", "TPR_at_FPR0.001"]].mean()
+    put(f"PaucKnn{F}", g.loc["KNN-win", "pAUC01"], 3, "plain", "low_fpr.csv")
+    put(f"PaucMin{F}", g.pAUC01.min(), 3, "plain", "low_fpr.csv", "all 18 methods")
+    put(f"PaucMax{F}", g.pAUC01.max(), 3, "plain", "low_fpr.csv", f"max: {g.pAUC01.idxmax()}")
+    put(f"TprOneMax{F}", 100 * g["TPR_at_FPR0.01"].max(), 1, "percent", "low_fpr.csv", f"max: {g['TPR_at_FPR0.01'].idxmax()}")
+    put(f"NTprOneAboveKnn{F}", int((g["TPR_at_FPR0.01"] > g.loc["KNN-win", "TPR_at_FPR0.01"]).sum()), 0, "int", "low_fpr.csv")
+    for m in ("IW-DANN", "CORAL", "BRN-XGB", "IRM"):
+        put(f"TprOne{F}{mname(m)}", 100 * g.loc[m, "TPR_at_FPR0.01"], 1, "percent", "low_fpr.csv")
+
+
+def table_lowfpr():
+    """TPR at 1% FPR and standardised pAUC (FPR <= 1%) of all methods, both releases."""
+    order = [m for s in ("S0", "S1", "S2") for m in METHODS if METHODS[m][3] == s]
+    L = [r"\begin{tabular}{@{}llrrrrrr@{}}", r"\toprule",
+         r" & & \multicolumn{3}{c}{NF-v2} & \multicolumn{3}{c}{NF-v3} \\", r"\cmidrule(lr){3-5}\cmidrule(l){6-8}",
+         r"Setting & Method & AUROC & pAUC$_{1\%}$ & TPR$_{1\%}$ & AUROC & pAUC$_{1\%}$ & TPR$_{1\%}$ \\", r"\midrule"]
+    G = {fam: lf[lf.family == fam].groupby("method")[["AUROC", "pAUC01", "TPR_at_FPR0.01"]].mean() for fam in FAMS}
+    best = {fam: G[fam].max() for fam in FAMS}
+    for i, m in enumerate(order):
+        new = i == 0 or METHODS[order[i - 1]][3] != METHODS[m][3]
+        if new and i:
+            L.append(r"\addlinespace[2pt]")
+        cells = []
+        for fam in FAMS:
+            for c, f in (("AUROC", "{:.3f}"), ("pAUC01", "{:.3f}"), ("TPR_at_FPR0.01", "{:.1f}")):
+                v = G[fam].loc[m, c] * (100 if c.startswith("TPR") else 1)
+                s_ = f.format(v)
+                cells.append(rf"\textbf{{{s_}}}" if G[fam].loc[m, c] == best[fam][c] else s_)
+        L.append(f"{METHODS[m][3] if new else ''} & {DISPLAY.get(m, m)} & " + " & ".join(cells) + r" \\")
+    L += [r"\bottomrule", r"\end{tabular}"]
+    open(os.path.join(GEN, "tables", "tab_lowfpr.tex"), "w", encoding="utf-8").write("\n".join(L) + "\n")
+
+
+table_lowfpr()
+
+fu = pd.read_csv(os.path.join(B, "analysis", "fusion.csv"))
+for fam, F in FAMS.items():
+    g = fu[(fu.family == fam) & (fu.rule == "KNN+best")]
+    put(f"FusAuc{F}", g.AUROC.mean(), 3, "plain", "fusion.csv", f"KNN-win + {g.partner.iloc[0]}")
+    put(f"FusTprOne{F}", 100 * g["TPR_at_FPR0.01"].mean(), 1, "percent", "fusion.csv")
+    put(f"FusPauc{F}", g.pAUC01.mean(), 3, "plain", "fusion.csv")
+    put(f"FusAucDrop{F}", 100 * (E1[(fam, "KNN-win")].AUROC.mean() - g.AUROC.mean()), 1, "pp", "fusion.csv")
+    k2 = lf[(lf.family == fam) & (lf.method == "KNN-win")]
+    hc3 = (g["TPR_at_FPR0.01"].mean() > k2["TPR_at_FPR0.01"].mean()) and (k2.AUROC.mean() - g.AUROC.mean() <= 0.02)
+    put(f"HCThree{F}", int(hc3), 0, "int", "H-C3: 1 = holds")
+
+# label budget by target: attacks among the k labels, and XGB-ST runs whose labels hold no attack
+st3 = e3[e3.method == "XGB-ST"]
+for fam, F in FAMS.items():
+    for t in sorted(st3[st3.family == fam].target.unique()):
+        g = st3[(st3.family == fam) & (st3.target == t) & (st3.k == 30)]
+        put(f"LbAtt{F}{tname(t)}Thirty", g.k_attacks.mean(), 1, "plain", "e3_runs.csv", "attacks among 30 labels")
+        knn_t = E1[(fam, "KNN-win")][E1[(fam, "KNN-win")].target == t].AUROC.mean()
+        bk = st3[(st3.family == fam) & (st3.target == t)].groupby("k").AUROC.mean()
+        reach = [k for k in sorted(bk.index) if bk[k] >= knn_t]
+        put(f"LbExch{F}{tname(t)}", reach[0] if reach else 2000, 0, "int", "e3 vs E1", "2000 = not reached by k = 1000")
+z0 = st3[(st3.k_attacks == 0) & st3.target.str.contains("UNSW")]
+put("LbZeroAttUnswN", len(z0), 0, "int", "e3_runs.csv", "XGB-ST runs on UNSW with no attack among the labels")
+put("LbZeroAttUnswMin", z0.AUROC.min(), 3, "plain", "e3_runs.csv")
+put("LbZeroAttUnswMax", z0.AUROC.max(), 3, "plain", "e3_runs.csv")
+put("LbZeroAttUnswMean", z0.AUROC.mean(), 3, "plain", "e3_runs.csv")
+z1 = st3[(st3.k_attacks == 0) & st3.target.str.contains("CSE")]
+put("LbZeroAttCseMean", z1.AUROC.mean(), 3, "plain", "e3_runs.csv")
+_ub = {(fam, m): E1[(fam, m)][E1[(fam, m)].target.str.contains("UNSW")].AUROC.mean() for fam in FAMS for m in S01}
+put("UnswBestSrcAny", max(_ub.values()), 3, "plain", "E1",
+    f"best S0/S1 method on UNSW-NB15 in either release, chosen with hindsight: {max(_ub, key=_ub.get)}")
+
+# without BoT-IoT; margins on the near-tie targets; source vs target attack share
+for fam, F in FAMS.items():
+    nb = lambda m: E1[(fam, m)][~E1[(fam, m)].target.str.startswith("NF-BoT")].AUROC.mean()  # noqa: E731
+    s01nb = {m: nb(m) for m in S01}
+    put(f"NoBotKnn{F}", nb("KNN-win"), 3, "plain", "E1", "3 targets, BoT-IoT excluded")
+    put(f"NoBotBestSrc{F}", max(s01nb.values()), 3, "plain", "E1", f"best: {max(s01nb, key=s01nb.get)}")
+    put(f"NoBotGain{F}", 100 * (nb("KNN-win") - max(s01nb.values())), 1, "pp", "E1")
+    bot = {m: E1[(fam, m)][E1[(fam, m)].target.str.startswith("NF-BoT")].AUROC.mean() for m in S01}
+    put(f"BotMargin{F}", 100 * (E1[(fam, "KNN-win")][E1[(fam, "KNN-win")].target.str.startswith("NF-BoT")].AUROC.mean()
+                                - max(bot.values())), 1, "pp", "E1", f"vs per-target best {max(bot, key=bot.get)}")
+    suf = "v2" if fam == "nfv2" else "v3"
+    share = {t: 1 - json.load(open(os.path.join(POOLS, fam, f"{t}-{suf}_stats.json")))["count"]["benign"]
+             / json.load(open(os.path.join(POOLS, fam, f"{t}-{suf}_stats.json")))["rows_total"] for t in TGT}
+    for t, T in TGT.items():
+        put(f"SrcAttShare{F}{T}", 100 * np.mean([share[s] for s in TGT if s != t]), 1, "percent", "pool stats",
+            "mean attack share of the three sources")
+        put(f"TgtAttShare{F}{T}", 100 * share[t], 1, "percent", "pool stats")
+    for m in ("CORAL", "DANN"):
+        u_ = {mm: E1[(fam, mm)][E1[(fam, mm)].target.str.startswith("NF-UNSW")].AUROC.mean() for mm in (m, "ERM-CB")}
+        put(f"UnswGap{F}{mname(m)}", 100 * (u_[m] - u_["ERM-CB"]), 1, "pp", "E1", "method - ERM-CB on UNSW-NB15")
+
+# precision of KNN-win's MAD rule at realistic attack prevalence (from its realised TPR and FPR)
+for fam, F in FAMS.items():
+    md = pd.read_csv(os.path.join(B, f"eval_{fam}__KNN-win.csv"))
+    md = md[md.rule == "win_mad"]
+    for pi, P in ((0.01, "One"), (0.001, "Tenth")):
+        prec = md.TPR_op * pi / (md.TPR_op * pi + md.FPR_op * (1 - pi))
+        put(f"PrecPrev{P}{F}", 100 * prec.mean(), 1, "percent", f"eval_{fam}__KNN-win.csv", f"MAD rule at prevalence {pi}")
+
+# ---------------------------------------------------------------- second review: controls (H-C1, H-C2, H-C4, C2)
+CT = os.path.join(R, "controls")
+oc = pd.read_csv(os.path.join(CT, "oneclass.csv"))
+xw = pd.read_csv(os.path.join(CT, "xgbwin.csv"))
+nd = pd.read_csv(os.path.join(CT, "neardup.csv"))
+pk = pd.read_csv(os.path.join(CT, "poisonk.csv"))
+assert len(oc) == 320 and len(xw) == 80 and len(nd) == 80 and len(pk) == 960
+ctl_rows, cap_win = [], {}
+for fam, F in FAMS.items():
+    kw = E1[(fam, "KNN-win")].groupby("target").AUROC.mean()
+    ks = oc[(oc.family == fam) & (oc.method == "KNN-src") & (oc.n_ref == 500)].groupby("target").AUROC.mean()
+    put(f"OcKnnSrc{F}", ks.mean(), 3, "plain", "oneclass.csv", "KNN on 500 source benign flows")
+    put(f"OcKnnSrcBig{F}", oc[(oc.family == fam) & (oc.method == "KNN-src") & (oc.n_ref == 20000)].AUROC.mean(), 3, "plain", "oneclass.csv")
+    put(f"OcIfSrc{F}", oc[(oc.family == fam) & (oc.method == "IF-src") & (oc.n_ref == 500)].AUROC.mean(), 3, "plain", "oneclass.csv")
+    put(f"OcGap{F}", 100 * (kw.mean() - ks.mean()), 1, "pp", "oneclass.csv", "KNN-win - KNN-src(500)")
+    x = E1[(fam, "KNN-win")].merge(oc[(oc.family == fam) & (oc.method == "KNN-src") & (oc.n_ref == 500)], on=["target", "seed"])
+    put(f"OcP{F}", wil(x.AUROC_x - x.AUROC_y), 1, "pvalue", "Wilcoxon, n=40")
+    for t in kw.index:
+        cap_win.setdefault(tname(t), []).append(kw[t] - ks[t] >= 0.10)
+        put(f"OcKnnSrc{F}{tname(t)}", ks[t], 3, "plain", "oneclass.csv")
+    xs = xw[xw.family == fam].groupby("target").AUROC.mean()
+    put(f"SwAuc{F}", xs.mean(), 3, "plain", "xgbwin.csv", "XGB on sources + window labelled benign")
+    put(f"SwTprOne{F}", 100 * xw[xw.family == fam]["TPR_at_FPR0.01"].mean(), 1, "percent", "xgbwin.csv")
+    best = max(S01, key=lambda m: E1[(fam, m)].AUROC.mean())
+    bs = E1[(fam, best)].groupby("target").AUROC.mean()
+    for t in sorted(kw.index, key=lambda t: {"Bot": 0, "Cse": 1, "Ton": 2, "Unsw": 3}[tname(t)]):
+        ctl_rows.append((F, tname(t), kw[t], ks[t], oc[(oc.family == fam) & (oc.method == "IF-src") & (oc.n_ref == 500)
+                                                     & (oc.target == t)].AUROC.mean(), xs[t], bs[t], best))
+    g = nd[nd.family == fam]
+    put(f"NdRemovedBenign{F}", 100 * g.removed_benign_p5.mean(), 1, "percent", "neardup.csv", "eps = 5th percentile")
+    put(f"NdDrop{F}", 100 * (g.AUROC_all - g.AUROC_p5).mean(), 1, "pp", "neardup.csv")
+    put(f"NdDropMax{F}", 100 * (g.AUROC_all - g.AUROC_p5).groupby(g.target).mean().max(), 1, "pp", "neardup.csv", "worst target")
+    q = pk[pk.family == fam].pivot_table(index="p_poison", columns="k", values="AUROC_target_family")
+    for k_, K_ in ((20, "Twenty"), (100, "Hundred"), (200, "TwoHundred")):
+        put(f"PkClean{F}K{K_}", q.loc[0.0, k_], 3, "plain", "poisonk.csv")
+        put(f"PkPois{F}K{K_}", q.loc[0.1, k_], 3, "plain", "poisonk.csv")
+put("OcNCapturesBoth", sum(all(v) for v in cap_win.values()), 0, "int", "oneclass.csv",
+    "captures where KNN-win beats KNN-src by >= 10 pp in both releases")
+put("HCOneHolds", int(all(r["value"] >= 10 for r in ledger if r["key"] in ("OcGapVtwo", "OcGapVthree"))
+                      and sum(all(v) for v in cap_win.values()) >= 3), 0, "int", "H-C1: 1 = holds")
+put("HCTwoHolds", int(all(r["value"] < 5 for r in ledger if r["key"] in ("NdDropVtwo", "NdDropVthree"))), 0, "int", "H-C2")
+put("HCFourHolds", int(all(xw[xw.family == f].AUROC.mean() < E1[(f, "KNN-win")].AUROC.mean() for f in FAMS)), 0, "int", "H-C4")
+
+
+def table_controls():
+    names = {"Bot": "BoT-IoT", "Cse": "CIC-IDS2018", "Ton": "ToN-IoT", "Unsw": "UNSW-NB15"}
+    L = [r"\begin{tabular}{@{}llrrrrr@{}}", r"\toprule",
+         r" & & \multicolumn{2}{c}{KNN reference} & IF ref. & XGB + & Best \\", r"\cmidrule(lr){3-4}",
+         r"Release & Target & target window & source benign & source benign & window & S0/S1 \\", r"\midrule"]
+    for i, (F, T, kw_, ks_, is_, xs_, bs_, best) in enumerate(ctl_rows):
+        lead = ("NF-v2" if F == "Vtwo" else "NF-v3") if i % 4 == 0 else ""
+        vals = [kw_, ks_, is_, xs_, bs_]
+        mx = max(vals)
+        L.append(f"{lead} & {names[T]} & " + " & ".join(rf"\textbf{{{v:.3f}}}" if v == mx else f"{v:.3f}" for v in vals) + r" \\")
+        if i == 3:
+            L.append(r"\midrule")
+    L += [r"\bottomrule", r"\end{tabular}"]
+    open(os.path.join(GEN, "tables", "tab_controls.tex"), "w", encoding="utf-8").write("\n".join(L) + "\n")
+
+
+table_controls()
+
+# poisoning mechanism: tuned k vs poisoned flows; poisoned flows removed by trimming
+kk = [v["k"] for fam in FAMS for v in json.load(open(os.path.join(B, f"selected_{fam}__KNN-win.json"))).values()]
+put("KnnKMin", min(kk), 0, "int", "selected_*__KNN-win.json")
+put("KnnKMax", max(kk), 0, "int", "selected_*__KNN-win.json")
+tr10 = p2[(p2.defense == "trimmed") & (p2.method == "KNN-win") & (p2.p_poison == 0.10)]
+put("TrimPurged", tr10.purged_poison.mean(), 1, "plain", "poisoning_runs.csv", "poisoned flows removed by trimming, of 50")
+put("NPoisonTen", 50, 0, "int", "10% of 500")
 
 # ---------------------------------------------------------------- Holm correction over the declared paired tests
 def holm(p):

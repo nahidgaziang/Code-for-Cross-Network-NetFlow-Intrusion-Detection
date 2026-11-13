@@ -4,7 +4,7 @@ Vector PDFs are written to paper/figures/; --png also writes previews.
   python paper/make_figures.py [--png]
 Encoding: release -> colour (Okabe-Ito blue / vermilion), method -> marker shape; uncertainty is a 95%
 seed-bootstrap interval of the mean over targets.
-Environment: NF_RESULTS_DIR (default: results/).
+Environment: NF_RESULTS_DIR (default: results_archive/).
 """
 import os
 import sys
@@ -19,7 +19,7 @@ from matplotlib.lines import Line2D  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, ".."))
-R = os.environ.get("NF_RESULTS_DIR", os.path.join(ROOT, "results"))
+R = os.environ.get("NF_RESULTS_DIR", os.path.join(ROOT, "results_archive"))
 B = os.path.join(R, "benchmark")
 OUT = os.path.join(HERE, "figures")
 os.makedirs(OUT, exist_ok=True)
@@ -162,7 +162,7 @@ def fig_decision():
             ax.plot(mu, yy, "o" if j == 0 else "s", color=COL[fam], ms=3.8, mec="white", mew=0.5)
     d = dl[dl.family == "nfv2"]
     em_, thr_, src_ = d.em.mean(), d.oracle_threshold.mean(), d.src_val_macro_f1.mean()
-    for a_, b_, lab in ((em_, thr_, "threshold"), (thr_, src_, "ranking")):
+    for a_, b_, lab in ((em_, thr_, "threshold"), (thr_, src_, "irrecoverable")):
         ax.annotate("", xy=(a_, 6.0), xytext=(b_, 6.0), arrowprops=dict(arrowstyle="<->", color=MUTED, lw=0.7,
                                                                           shrinkA=0, shrinkB=0))
         ax.text((a_ + b_) / 2, 6.15, lab, ha="center", va="top", fontsize=6.5, color=MUTED)
