@@ -403,8 +403,9 @@ def fig_poison():
 def fig_labels():
     e3 = pd.read_csv(os.path.join(R, "e3", "e3_runs.csv"))
     ks = [10, 30, 100, 300, 1000]
-    fig, axes = plt.subplots(1, 2, figsize=(COLW, 1.75), sharey=True)
-    for ax, fam in zip(axes, REL):
+    # same size and two-row structure as Fig. 6, which it sits beside in the paper
+    fig, axes = plt.subplots(2, 1, figsize=(COLW, 2.9), sharex=True, sharey=True)
+    for r_, (ax, fam) in enumerate(zip(axes, REL)):
         _, klo, khi = boot(E1[(fam, "KNN-win")], "AUROC")
         kmu = E1[(fam, "KNN-win")].AUROC.mean()
         ax.axhspan(klo, khi, color=WIN, alpha=0.18, lw=0)
@@ -420,15 +421,16 @@ def fig_labels():
         ax.set_xticklabels([str(k) for k in ks])
         ax.minorticks_off()
         ax.set_ylim(0.45, 1.0)
-        ax.set_xlabel("Labelled target flows k")
-        ax.set_title(REL[fam], loc="left", fontweight="bold", color=COL[fam])
-    axes[0].set_ylabel("AUROC")
-    axes[0].text(12, E1[("nfv2", best_s01["nfv2"])].AUROC.mean() - 0.012, "best source-side", fontsize=6.5, color=MUTED, va="top")
+        ax.set_ylabel(f"{REL[fam]}\nAUROC")
+        ax.yaxis.label.set_color(COL[fam])
+        if r_ == 1:
+            ax.set_xlabel("Labelled target flows k")
+    axes[0].text(11, E1[("nfv2", best_s01["nfv2"])].AUROC.mean() - 0.015, "best source-side", fontsize=6.5, color=MUTED, va="top")
     hs = [Line2D([], [], color=INK, marker="o", mec="white", label="XGB-ST (source + k)"),
           Line2D([], [], color=INK, lw=0.8, marker="o", mfc="white", mec=INK, label="XGB-T (k only)"),
-          Line2D([], [], color=WIN, lw=4, alpha=0.4, label="KNN-win, 500-flow window")]
-    fig.legend(handles=hs, loc="upper center", ncol=3, bbox_to_anchor=(0.53, 1.17), handletextpad=0.3, columnspacing=0.8)
-    fig.subplots_adjust(wspace=0.1)
+          Line2D([], [], color=WIN, lw=4, alpha=0.4, label="KNN-win (500 flows)")]
+    fig.legend(handles=hs, loc="upper center", ncol=3, bbox_to_anchor=(0.55, 1.04), handletextpad=0.3, columnspacing=0.8)
+    fig.subplots_adjust(hspace=0.18)
     save(fig, "fig_labels")
 
 

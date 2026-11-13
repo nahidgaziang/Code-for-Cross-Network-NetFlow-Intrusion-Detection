@@ -1,0 +1,13 @@
+{
+  "upload_type": "software",
+  "title": "Code for \"Cross-Network NetFlow Intrusion Detection: A Controlled Benchmark of Transfer, Adaptation and Target Reference Windows\"",
+  "version": "v1.1.0",
+  "creators": [
+    {"name": "Gazi, Nahid", "affiliation": "Shahjalal University of Science and Technology", "orcid": "0009-0006-1661-9985"},
+    {"name": "Prappo, Tanzim Hasan", "affiliation": "Shahjalal University of Science and Technology", "orcid": "0009-0006-7898-7249"},
+    {"name": "Hossain, A.K.M. Fakhrul", "affiliation": "Shahjalal University of Science and Technology", "orcid": "0009-0004-7186-353X"}
+  ],
+  "description": "<p>Code and run-level results that reproduce the paper \"Cross-Network NetFlow Intrusion Detection: A Controlled Benchmark of Transfer, Adaptation and Target Reference Windows\".</p><p>The study asks what a flow-based intrusion detector must know about a network it has never seen. It uses leave-one-testbed-out evaluation over four public testbeds (UNSW-NB15, BoT-IoT, ToN-IoT, CSE-CIC-IDS2018) in two standardised NetFlow releases (NF-v2, NF-v3) and compares 18 methods grouped by the target information they use: source data only, an unlabelled target sample, or a short reference window of the target's normal traffic; a label-budget study adds a few labelled target flows. Every method receives the same source-only tuning budget and runs with ten seeds, and ranking (AUROC) and decision thresholds are evaluated separately.</p><p>Contents: crossnet/ (folds, methods, training, decision rules, metrics, benchmark runner); scripts/ (dataset download with checksums, sampling pools); experiments/ (follow-up studies, including windows collected without labels and the controls added after review); analysis/ (hypothesis tests and analyses of saved scores); paper/ (scripts that recompute every number, table and figure of the paper); results_archive/ (run-level results of every reported run, from which those scripts reproduce the paper exactly without training); tests/; docs/ (protocol, per-experiment instructions and the dated hypothesis declarations).</p><p>Version 1.1.0 adds the run-level results, the analysis plan and the studies added after pre-submission review. The NetFlow datasets are not redistributed; the download script fetches them from their providers.</p>",
+  "license": "MIT",
+  "keywords": ["network intrusion detection", "NetFlow", "distribution shift", "domain adaptation", "anomaly detection", "cross-network evaluation", "reproducibility", "benchmark"]
+}
